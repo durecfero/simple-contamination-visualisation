@@ -21,69 +21,77 @@
           background-color: lightcyan;
           width: 900px;
         }
-        
-        /* .flex-container > div {
-          background-color: #f1f1f1;
-          width: 100px;
-          margin: 10px;
-          text-align: center;
-          line-height: 75px;
-          font-size: 30px;
-        } */
+        .btncenter {
+            width: 900px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
     </style>
 </head>
 <body style="text-align:center; margin: 0px;" >
-
 	<div id="vstupy" class="flex-container">
-        <div id="dataPart" style="width: 50%;">
+        <div id="dataPart" style="width: 50%; text-align: left; padding-left: 25px;">
+            <form >
+                <br>
+                <span>Select visualisation type:</span><br>
+                <input type="radio" id="viewSurface" name="viewType" value="viewSurface" checked onchange="setViewType(this)">
+                <label for="viewSurface">Points and surface interpolation</label> <br>
+                <input type="radio" id="viewPoints" name="viewType" value="viewPoints" onchange="setViewType(this)">
+                <label for="viewPoints">Points only</label><br>
+            </form> 
             <br>
-            <input type="file" id="myInput" accept=".csv, .xlsx" class="myButton" onchange="readFile(this)" /><br><br>
-            <form>
+            <input type="file" id="myInput" accept=".csv, .xlsx" onchange="readFile(this)" /><br><br>
+            <form >
                 <select id="selSheet" style="width: 150px;" onchange="getSelectedSheet(this)"></select>
                 <label for="selSheet">Select from available sheets</label>
             </form>
-            <form>
+            <form >
                 <select id="selX" style="width: 150px;"></select>
                 <label for="selX"> Select column X/Longitude </label><br>
                 <select id="selY" style="width: 150px;"></select>
                 <label for="selY">Select column Y/Latitude </label><br>
                 <select id="selZ" style="width: 150px;"></select>
-                <label for="selZ">Select column Z/Value </label><br>
+                <label for="selZ">Select Z column with values </label><br>
             </form>
             <form>
                 <br>
-                <span>Select axis type used:</span>
-                <input type="radio" id="wgs84" name="axisType" value="wgs84">
+                <span>Select the coordinate system used:</span><br>
+                <input type="radio" id="wgs84" name="axisType" value="wgs84" checked onchange="setInitWGS(this)">
                 <label for="wgs84">wgs84 (GPS)</label>
-                <input type="radio" id="metric" name="axisType" value="metric">
-                <label for="metric">metric axes</label><br>
+                <input type="radio" id="metric" name="axisType" value="metric" onchange="setInitWGS(this)">
+                <label for="metric">metric/cartesian (X,Y)</label><br>
             </form> 
         </div>
         <div id="viewPart" style="width: 50%; background-color: lightgreen;">
-            <form>
+            <form style="text-align: left; padding-left: 15px;">
+                <br><br>
+                <span>Set interpolation parameters:</span>
                 <br><br>
                 <input type="number" id="inContourSteps" style="width: 70px;" />
                 <label for="inContourSteps">Set number of contour steps</label><br>
-                <input type="number" id="interpolationDensity" style="width: 70px;" step=".0001"/>
-                <label for="interpolationDensity">Set grid point density for IDW interpolation</label><br>
+                <input type="number" id="interpolationDensity" style="width: 70px;" step="5" min="5" max="500"/>
+                <!-- <input type="range" id="interpolationDensity" name="interpolationDensity" min="10" max="500"> -->
+                <label for="interpolationDensity">Grid density parameter (5 - 500)</label><br>
                 <input type="number" id="inIDWexp" style="width: 70px;" value="1.0" step=".1"/>
                 <label for="inIDWexp">Set exponent for IDW interpolation</label><br>
             </form>
         </div>
     </div>
     <br>
-    <div id="btn" class="flex-container">
-        <div id="dataBtn" style="width: 50%;">
-            <button id="btnRun" onclick="runCalculation(this)">Run calculation</button>
+    <div id="btn">
+        <div id="dataBtn" class="btncenter">
+            <button id="btnRun" onclick="runCalculation(this)">Run calculation/recalculation</button>
+            <span>&nbsp;&nbsp;&nbsp;</span>
             <button id="btnReset" onclick="resetApp(this)">Reset all</button>
         </div>
-        <div id="viewBtn" style="width: 50%; background-color: lightgreen;">
+        <!-- <div id="viewBtn" style="width: 50%; background-color: lightgreen;">
             <button id="btnRecalculate">Recalculate</button>
-        </div>
+        </div> -->
     </div>
     <br>
 
-	<div id="vstupy" class="flex-container">
+	<div id="mapy" class="flex-container">
         <div id="myMap" style="width: 50%; height: 400px; border:1px solid black;"></div>
         <div id="mygrf" style="width: 50%; height: 400px; border:1px solid black;"></div>
     </div>
@@ -119,11 +127,15 @@
         var lines = [];
         var pasy = [];
         var points = [];
+        var pointsColor = [];
         // ***  Initial value
         var contourSteps = 10;
         var stepsDiff = 1;
         var expIDW = 1;
-        var vzd = 0.0005;  // vzdialenost bodov v km
+        var vzd = 5;  // vzdialenost bodov
+        var wgsTyp = true;
+        var viewTyp = true;
+
         document.getElementById("inContourSteps").value = contourSteps;
         document.getElementById("interpolationDensity").value = vzd;
         document.getElementById("inIDWexp").value = expIDW;
@@ -158,13 +170,24 @@
             lines = [];
             pasy = [];
             points = [];
+            pointsColor = [];
             contourSteps = 10;
             stepsDiff = 1;
             expIDW = 1;
-            vzd = 0.0005;  // vzdialenost bodov v km
+            vzd = 5;  // vzdialenost bodov v km
+            wgsTyp = true;
+            viewTyp = true;
             document.getElementById("inContourSteps").value = contourSteps;
             document.getElementById("interpolationDensity").value = vzd;
             document.getElementById("inIDWexp").value = expIDW;
+            document.getElementById("wgs84").checked = true;
+            document.getElementById("viewSurface").checked = true;
+            document.getElementById("inContourSteps").disabled = false;
+            document.getElementById("interpolationDensity").disabled = false;
+            document.getElementById("inIDWexp").disabled = false;
+            document.getElementById("myMap").style.width = '50%';
+            document.getElementById("mygrf").style.width = '50%';
+
 
             // Leaflet map and Plotly - initial view setting
             map.eachLayer(function (layer) {
@@ -178,7 +201,37 @@
             selyy.innerHTML = "";
             selzz.innerHTML = "";
             inputTag.value = "";
+        }
 
+        function setViewType(){
+            var interpolaciaYes = document.getElementById("viewSurface").checked;
+            if(!interpolaciaYes){
+                document.getElementById("inContourSteps").disabled = true;
+                document.getElementById("interpolationDensity").disabled = true;
+                document.getElementById("inIDWexp").disabled = true;
+                viewTyp = false;
+            }else{
+                document.getElementById("inContourSteps").disabled = false;
+                document.getElementById("interpolationDensity").disabled = false;
+                document.getElementById("inIDWexp").disabled = false;
+                viewTyp = true;
+            }
+            console.log("viewTyp", viewTyp);
+        }
+
+        function setInitWGS(){
+            var typSuradnic = document.getElementById("wgs84").checked;
+            if(!typSuradnic){
+                wgsTyp = false;
+                document.getElementById("myMap").style.width = '0%';
+                document.getElementById("mygrf").style.width = '100%';
+            }else{
+                wgsTyp = true;
+                document.getElementById("myMap").style.width = '50%';
+                document.getElementById("mygrf").style.width = '50%';
+            }
+            // console.log("wgs: ", wgsTyp);
+            document.getElementById("interpolationDensity").value = 5;
         }
 
         function readFile(e) {
@@ -201,53 +254,74 @@
                     wsheet.add(option);
                 });
                 selMeno = wsheet.value;
-                // console.log(selMeno);
                 getSelectedSheet();
             };
-            // console.log(xdata);
         }
 
         function runCalculation(){
             contourSteps = Number(document.getElementById("inContourSteps").value);
             expIDW = Number(document.getElementById("inIDWexp").value);
             vzd = Number(document.getElementById("interpolationDensity").value);
-            console.log(contourSteps, expIDW);
+
             if(subor == "") {
                 return;
             }else{
                 getSelectedColumn();
                 colCount = raw_data.length;
-
+                // console.log('pocet riadkov:',colCount);
                 xdata = [];
                 ydata = [];
                 zdata = [];
+                xyzdata = [];
                 for(var ii = 1; ii < colCount; ++ii) {
                     var xx = raw_data[ii][colX];
                     var yy = raw_data[ii][colY];
-                    var zz = raw_data[ii][colZ]*1000000000;
-                    // var zz = raw_data[ii][colZ];
-                    zz = parseFloat(zz.toFixed(1));
-                    xdata.push(xx);
-                    ydata.push(yy);
-                    zdata.push(zz);
-                    xyzdata.push([xx, yy, zz]);
+                    // var zz = raw_data[ii][colZ]*1000000000;
+                    var zz = raw_data[ii][colZ];
+                    if(!(xx==0 && yy==0)){
+                        xdata.push(xx);
+                        ydata.push(yy);
+                        zdata.push(zz);
+                        xyzdata.push([xx, yy, zz]);
+                    }
                 }
+
                 xcenter= math.mean(xdata);
                 ycenter= math.mean(ydata);
                 var zmin = math.min(zdata);
                 var zmax = math.max(zdata);
 
-                points = turf.points(xyzdata);
-                grid = turf.interpolate(points, vzd, {gridType: "points", weight: expIDW});
+                // [[0,'blue'],[0.25, 'cyan'],[0.5, 'green'],[0.75,'yellow'],[1.0, 'red']]
+                farb = chroma.scale(['blue', 'cyan', 'green', 'yellow', 'red']);  //.domain([0, 0.25, 0.5, 0.75,1]); 
+                var myHelp = [];
+                xyzdata.forEach((bod)=>{
+                    var normaliz = (bod[2]-zmin)/(zmax-zmin);
+                    pointsColor.push(farb(normaliz).hex());
+                    myHelp.push(turf.point(bod,{normVal: normaliz, farba:farb(normaliz).hex(), priemer:3}))
+                })
+                points = turf.featureCollection(myHelp);
 
+                var hranice = turf.bbox(points);
+                var from = turf.point([hranice[0], hranice[1]]);
+                var toX = turf.point([hranice[2], hranice[1]]);
+                var toY = turf.point([hranice[0], hranice[3]]);
+                var distanceX = turf.distance(from, toX, { units: "kilometers" });
+                var distanceY = turf.distance(from, toY, { units: "kilometers" });
+                if(distanceX >= distanceY){
+                    var stepDistance = distanceY/vzd;
+                }else{
+                    var stepDistance = distanceX/vzd;
+                }
+
+                grid = turf.interpolate(points, stepDistance, {gridType: "points", weight: expIDW});
                 var hranice = turf.bbox(grid);
                 var from = turf.point([hranice[0], hranice[1]]);
                 var toX = turf.point([hranice[2], hranice[1]]);
                 var toY = turf.point([hranice[0], hranice[3]]);
                 var distanceX = turf.distance(from, toX, { units: "kilometers" });
                 var distanceY = turf.distance(from, toY, { units: "kilometers" });
-                var nX = Math.round(distanceX/vzd)+1;
-                var nY = Math.round(distanceY/vzd)+1;
+                var nX = Math.round(distanceX/stepDistance)+1;
+                var nY = Math.round(distanceY/stepDistance)+1;
                 var xrow = [];
                 var yrow = [];
                 var zrow = [];
@@ -255,7 +329,6 @@
                 var yall = [];
                 var zall = [];
                 var countX = 1;
-                // var iii = 0;
                 turf.featureEach(grid, function (currentFeature, featureIndex) {
                     if(countX < nY){
                         xrow.push(currentFeature.geometry.coordinates[0]);
@@ -291,30 +364,24 @@
                 });
                 var zminGrid = math.min(zgrid);
                 var zmaxGrid = math.max(zgrid);
-                // console.log(zminGrid, zmin);
+                // console.log(zgrid);
 
                 var breaks = [];
                 stepsDiff = (zmaxGrid-zminGrid)/contourSteps;
-                // console.log(stepsDiff, zminGrid, zmaxGrid, contourSteps);
                 breaks.push(zminGrid);
                 for(var jj=1; jj < contourSteps + 1; ++jj){
                     breaks.push(zminGrid+jj * stepsDiff);
-                    // breaks = [zmin, 150, 175, 200, 225, zmax];
                 }
-                // console.log(breaks);
                 var breaksID = [];
-                // var breaksFarby = [];
 
-                farb= chroma.scale(['yellow', 'red', 'black']).domain([1,breaks.length]); 
+                // farb = chroma.scale(['yellow', 'red', 'black']).domain([1,breaks.length]); 
                 for(var ii = 0; ii < breaks.length; ++ii) {
-                    breaksID.push({idFarba: ii, farbicka:farb(ii).hex()});
-                    // breaksFarby.push(farb(ii).hex());
+                    var normaliz = ii/breaks.length;
+                    breaksID.push({idFarba: ii, farbicka:farb(normaliz).hex()});
                 }
 
                 lines = turf.isolines(grid, breaks);
                 pasy = turf.isobands(grid, breaks,{breaksProperties: breaksID});
-
-                // farba = chroma.scale(['yellow', 'red']).domain([zmin,zmax]); 
 
                 leafletDraw();
                 plotlyDraw(xall,yall,zall, nX, nY, zmin, zmax);
@@ -332,56 +399,77 @@
                 var optionX = document.createElement("option");
                 var optionY = document.createElement("option");
                 var optionZ = document.createElement("option");
-                optionX.text = meno;
-                optionY.text = meno;
-                optionZ.text = meno;
+                var mm = meno.replace(/\x00/g,'');
+                optionX.text = mm
+                optionY.text = mm;
+                optionZ.text = mm;
                 selxx.add(optionX);
                 selyy.add(optionY);
                 selzz.add(optionZ);
             });
-            // console.log(raw_data.length);
-            // console.log(xdata);
         }
 
         function getSelectedColumn(){
             colX = selxx.selectedIndex;
             colY = selyy.selectedIndex;
             colZ = selzz.selectedIndex;
-            // console.log();
         }
         
         function leafletDraw(){
-            map.setView([ycenter,xcenter], 19, {animate: true});
+            map.eachLayer(function (layer) {
+                if (mapTileURL != layer._url){map.removeLayer(layer)};
+            });
 
-            var pasyLayer = L.geoJSON(pasy,{
-               style: function (feature){
-                    return {
-                        color: feature.properties.farbicka,
-                        weight: 1,
-                        opacity: 0.5,
-                        fillColor:feature.properties.farbicka,
-                        fillOpacity: 1
-                    };
-               }
-            }).addTo(map);
+            if(viewTyp){
+                var pasyLayer = L.geoJSON(pasy,{
+                style: function (feature){
+                        return {
+                            color: feature.properties.farbicka,
+                            weight: 1,
+                            opacity: 0.5,
+                            fillColor:feature.properties.farbicka,
+                            fillOpacity: 1
+                        };
+                   }
+                }).addTo(map);
+            }
 
             // var lineLayer = L.geoJSON(lines).addTo(map);
+            if(!viewTyp){
+                var bodyLayer = L.geoJSON(points, {
+                    pointToLayer: function (feature, latlng) {
+                        var myMrk = {
+                            radius: 2,
+                            weight: 1,
+                            opacity: 0,
+                            color: feature.properties.farba,
+                            fillOpacity: 1
+                        };
+                        return L.circleMarker(latlng, myMrk);
+                    }
+                }).addTo(map);
+            }else{
+                var bodyLayer = L.geoJSON(points, {
+                    pointToLayer: function (feature, latlng) {
+                        var myMrk = {
+                            radius: 2,
+                            weight: 1,
+                            opacity: 0,
+                            color: 'black',
+                            fillOpacity: 1
+                        };
+                        return L.circleMarker(latlng, myMrk);
+                    }
+                }).addTo(map);
 
-            var bodyLayer = L.geoJSON(points, {
-                pointToLayer: function (feature, latlng) {
-                    var myMrk = {
-                        radius: 1,
-                        weight: 1,
-                        opacity: 0,
-                        color: 'black',
-                        fillOpacity: 1
-                    };
-                    return L.circleMarker(latlng, myMrk);
-                }
-            }).addTo(map);
+            }            
+            map.fitBounds(bodyLayer.getBounds(),{maxZoom:19});
+                
+            
         }
 
         function plotlyDraw(xxall, yyall, zzall, nX, nY, zmin, zmax){
+            Plotly.purge(mygrf);
 
             if(nX>nY){
                 var aspectX = 2;
@@ -395,13 +483,13 @@
                 // var eyeZ = aspectY;
             }
 
-            var dataPlot = [{
+            var plotSurface = {
                 type:'surface',
                 x:xxall,
                 y:yyall,
                 z:zzall,
                 autocolorscale: false,
-                colorscale:[[0,'yellow'],[0.6, 'red'],[1, 'brown']],
+                colorscale:[[0,'blue'],[0.25, 'cyan'],[0.5, 'green'],[0.75,'yellow'],[1.0, 'red']],
                 opacity: 0.8,
                 showscale:true,
                 contours: {
@@ -418,22 +506,49 @@
                         size:stepsDiff,
                         }
                     }
-                },{
-                type:'scatter3d',
-                mode: 'markers',
-                marker: {
-                    size: 5,
-                    color: 'blue',
-                    symbol: 'circle',
-                    line: {
-                        color: 'rgb(204, 204, 204)',
-                        width: 1
+                };
+
+            if(!viewTyp){
+                var plotPoints = {
+                    type:'scatter3d',
+                    mode: 'markers',
+                    marker: {
+                        size: 5,
+                        color: pointsColor,
+                        symbol: 'circle',
+                        line: {
+                            color: 'rgb(204, 204, 204)',
+                            width: 1
+                        },
                     },
-                },
-                x: xdata,
-                y: ydata,
-                z: zdata,
-            }];
+                    x: xdata,
+                    y: ydata,
+                    z: zdata,
+                };
+            }else{
+                var plotPoints = {
+                    type:'scatter3d',
+                    mode: 'markers',
+                    marker: {
+                        size: 5,
+                        color: 'blue',
+                        symbol: 'circle',
+                        line: {
+                            color: 'rgb(204, 204, 204)',
+                            width: 1
+                        },
+                    },
+                    x: xdata,
+                    y: ydata,
+                    z: zdata,
+                };
+            }
+
+            if(viewTyp){
+                var dataPlot = [plotSurface,plotPoints];
+            }else{
+                var dataPlot = [plotPoints];
+            }
             // console.log(xcenter);
 
             var layoutPlot = { 
