@@ -1,0 +1,843 @@
+<!doctype html>
+<html>
+<head>
+	<title>simpleCVT</title>
+	<meta name="keywords" content="html tutorial template">
+	<!-- <link rel="stylesheet" href="naturadon.css"> -->
+	<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+	<script src="https://unpkg.com/mathjs@11.5.1/lib/browser/math.js"></script>
+	<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" lang="javascript" ></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/0.5.9/chroma.min.js"></script>
+    <script src="https://unpkg.com/@sakitam-gis/kriging/dist/kriging.min.js"></script>
+
+    <style>
+        .flex-container {
+          display: flex;
+          /* flex-wrap: nowrap; */
+          background-color: lightcyan;
+          width: 900px;
+        }
+        .btncenter {
+            width: 900px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body style="text-align:center; margin: 0px;" >
+    <div style="width: 50%; text-align: center;" ><h2>Simple contamination visualisation tool - simpleCVT</h2></div>
+	<div id="vstupy" class="flex-container">
+        <div id="dataPart" style="width: 50%; text-align: left; padding-left: 25px;">
+            <form>
+                <br>
+                <span style="font-size: large; font-weight: bold;">Select the coordinate system used:</span><br>
+                <input type="radio" id="wgs84" name="axisType" value="wgs84" checked onchange="setInitWGS(this)">
+                <label for="wgs84">wgs84 (GPS)</label>
+                <input type="radio" id="metric" name="axisType" value="metric" onchange="setInitWGS(this)">
+                <label for="metric">metric/cartesian (X,Y)</label><br>
+            </form> 
+            <br>
+            <span style="font-size: large; font-weight: bold;">Select data:</span><br>
+            <input type="file" id="myInput" accept=".csv, .xlsx" onchange="readFile(this)" /><br><br>
+            <form >
+                <select id="selSheet" style="width: 150px;" onchange="getSelectedSheet(this)"></select>
+                <label for="selSheet">Select from available sheets</label>
+            </form>
+            <br>
+            <form >
+                <select id="selX" style="width: 150px;"></select>
+                <label for="selX">Longitude/X - column selection</label><br>
+                <select id="selY" style="width: 150px;"></select>
+                <label for="selY">Latitude/Y - column selection</label><br>
+                <select id="selZ" style="width: 150px;"></select>
+                <label for="selZ">Value/Z - column selection</label><br>
+            </form>
+            <form >
+                <br>
+                <span style="font-size: large; font-weight: bold;">Select visualisation type:</span><br>
+                <input type="radio" id="viewSurface" name="viewType" value="viewSurface" checked onchange="setViewType(this)">
+                <label for="viewSurface">Points and surface interpolation</label> <br>
+                <input type="radio" id="viewPoints" name="viewType" value="viewPoints" onchange="setViewType(this)">
+                <label for="viewPoints">Points only</label><br>
+            </form> 
+        </div>
+        <div id="viewPart" style="width: 50%; background-color: lightgreen;">
+            <form style="text-align: left; padding-left: 15px;">
+                <br>
+                <span style="font-size: large; font-weight: bold;">Set interpolation parameters:</span>
+                <br>
+                <input type="number" id="inContourSteps" style="width: 70px;"  min="0" max="50"/>
+                <label for="inContourSteps">Set number of contour steps</label><br>
+                <input type="number" id="interpolationDensity" style="width: 70px;" step="5" min="5" max="500"/>
+                <label for="interpolationDensity">Grid density parameter (5 - 500)</label>
+                <br><br>
+            </form>
+            <div id="viewArea" style="text-align: left; padding-left: 25px;background-color: lightgray;">
+                <br>
+                <span style="font-size: large; font-weight: bold;">Select level for area calculation</span><br>
+                <input type="range" id="myRange" min="0" max="100" step="1" value="0" oninput ="splitContour(this)" >
+                <p>Selected level: <span id="calcLevel">...</span>  </p>
+                <p>Area above selected level: <span id="calcArea">...</span> </p>
+                <p>&nbsp;</p>
+            </div>
+            
+        </div>
+    </div>
+    <br>
+    <div id="btn">
+        <div id="dataBtn" class="btncenter">
+            <button id="btnRun" onclick="runCalculation(this)">Run calculation/recalculation</button>
+            <span>&nbsp;&nbsp;&nbsp;</span>
+            <button id="btnReset" onclick="resetApp(this)">Reset all</button>
+        </div>
+        <!-- <div id="viewBtn" style="width: 50%; background-color: lightgreen;">
+            <button id="btnRecalculate">Recalculate</button>
+        </div> -->
+    </div>
+    <br>
+
+	<div id="mapy" class="flex-container">
+        <div id="myMap" style="width: 50%; height: 400px; border:1px solid black;"></div>
+        <div id="mygrf" style="width: 50%; height: 400px; border:1px solid black;"></div>
+    </div>
+
+    <script>
+        //*** Basic value declaration
+        const inputTag = document.getElementById("myInput");
+        var wsheet = document.getElementById("selSheet");
+        var selxx = document.getElementById("selX");
+        var selyy = document.getElementById("selY");
+        var selzz = document.getElementById("selZ");
+        var mapTileURL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+        //*** General variable declaration
+        var subor = "";
+        var alldata = [];
+        var raw_data = [];
+        var sheetNazvy = [];
+        var selMeno = [];
+        var colX = 0;
+        var colY = 0;
+        var colZ = 0;
+        var xdata = [];
+		var ydata = [];
+		var zdata = [];
+		var xyzdata = [];
+		var xcenter = 18.5;
+		var ycenter = 48.1;
+        var longrid = [];
+        var latgrid= [];
+        var zgrid = [];
+        var grid = [];
+        var lines = [];
+        var pasy = [];
+        var points = [];
+        var pointsColor = [];
+        // ***  Initial value
+        var contourSteps = 10;
+        var stepsDiff = 1;
+        // var expIDW = 1;
+        var vzd = 5;  // vzdialenost bodov
+        var wgsTyp = true;
+        var viewTyp = true;
+        var contourNad = 1.9e-7;
+        var zmin = 0;
+        var zmax = 0;
+        var zminGrid = 0;
+        var zmaxGrid = 0;
+
+        document.getElementById("inContourSteps").value = contourSteps;
+        document.getElementById("interpolationDensity").value = vzd;
+
+        // Base Leaflet map declaration
+        var map = L.map('myMap').setView([ycenter, xcenter], 4);
+        var mapSrc = L.tileLayer(mapTileURL, {
+            maxZoom: 25,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+        mapSrc.addTo(map);
+        var pasyLayer = {};
+        var lineLayer = {};
+        var pasPod = {};
+
+        function resetApp(){
+            subor = "";
+            alldata = [];
+            raw_data = [];
+            sheetNazvy = [];
+            selMeno = [];
+            colX = 0;
+            colY = 0;
+            colZ = 0;
+            xdata = [];
+            ydata = [];
+            zdata = [];
+            xyzdata = [];
+            xcenter = 18.5;
+            ycenter = 48.1;
+            longrid = [];
+            latgrid= [];
+            zgrid = [];
+            grid = [];
+            lines = [];
+            pasy = [];
+            points = [];
+            pointsColor = [];
+            contourSteps = 10;
+            stepsDiff = 1;
+            // expIDW = 1;
+            vzd = 5;  // vzdialenost bodov v km
+            wgsTyp = true;
+            viewTyp = true;
+            zmin = 0;
+            zmax = 0;
+
+            document.getElementById("inContourSteps").value = contourSteps;
+            document.getElementById("interpolationDensity").value = vzd;
+            // document.getElementById("inIDWexp").value = expIDW;
+            document.getElementById("wgs84").checked = true;
+            document.getElementById("viewSurface").checked = true;
+            document.getElementById("inContourSteps").disabled = false;
+            document.getElementById("interpolationDensity").disabled = false;
+            // document.getElementById("inIDWexp").disabled = false;
+            document.getElementById("myMap").style.width = '50%';
+            document.getElementById("mygrf").style.width = '50%';
+
+
+            // Leaflet map and Plotly - initial view setting
+            map.eachLayer(function (layer) {
+                if (mapTileURL != layer._url){map.removeLayer(layer)};
+            });
+            map.setView([ycenter, xcenter], 4);
+            Plotly.purge(mygrf);
+
+            wsheet.innerHTML = "";
+            selxx.innerHTML = "";
+            selyy.innerHTML = "";
+            selzz.innerHTML = "";
+            inputTag.value = "";
+        }
+
+        function setViewType(){
+            var interpolaciaYes = document.getElementById("viewSurface").checked;
+            if(!interpolaciaYes){
+                document.getElementById("inContourSteps").disabled = true;
+                document.getElementById("interpolationDensity").disabled = true;
+                document.getElementById("myRange").disabled = true;
+                // document.getElementById("viewArea").style.visibility = "hidden";
+                viewTyp = false;
+            }else{
+                document.getElementById("inContourSteps").disabled = false;
+                document.getElementById("interpolationDensity").disabled = false;
+                document.getElementById("myRange").disabled = false;
+                // document.getElementById("viewArea").style.visibility = "visible";
+                viewTyp = true;  // = chcem plosnu interpolaciu 
+            }
+            // console.log("viewTyp", viewTyp);
+        }
+
+        function setInitWGS(){
+            var typSuradnic = document.getElementById("wgs84").checked;
+            if(!typSuradnic){
+                wgsTyp = false;
+                document.getElementById("myMap").style.width = '0%';
+                document.getElementById("mygrf").style.width = '100%';
+            }else{
+                wgsTyp = true;
+                document.getElementById("myMap").style.width = '50%';
+                document.getElementById("mygrf").style.width = '50%';
+            }
+            // console.log("wgs: ", wgsTyp);
+            document.getElementById("interpolationDensity").value = 5;
+        }
+
+        function readFile(e) {
+            let file = e.files[0];
+            subor = file;   // uchovavam meno suboru pre testovanie otvorenia noveho suboru dat
+            let reader = new FileReader();
+            reader.readAsArrayBuffer(file);
+            
+            // Nacitat data zo suboru a naplnit sheet selector nazvami sheetov
+            reader.onload = function(e) {
+                var data = reader.result;
+                alldata = XLSX.read(data);
+                sheetNazvy = alldata.SheetNames;
+                wsheet.innerHTML = "";
+                selxx.innerHTML = "";
+                selyy.innerHTML = "";
+                selzz.innerHTML = "";
+                sheetNazvy.forEach (meno => {
+                    var option = document.createElement("option");
+                    option.text = meno;
+                    wsheet.add(option);
+                });
+                selMeno = wsheet.value;
+                getSelectedSheet();   // Nacita nazvy stlpcov a data z prveho sheetu
+            };
+        }
+
+        function runCalculation(){
+            contourSteps = Number(document.getElementById("inContourSteps").value);
+            vzd = Number(document.getElementById("interpolationDensity").value);
+            wgsTyp;
+            if(subor == "") {
+                return;
+            }else{
+                // Nacitanie udajov
+                getSelectedColumn();
+                colCount = raw_data.length;
+                xdata = [];
+                ydata = [];
+                zdata = [];
+                xyzdata = [];
+                for(var ii = 1; ii < colCount; ++ii) {
+                    var xx = raw_data[ii][colX];
+                    var yy = raw_data[ii][colY];
+                    var zz = raw_data[ii][colZ];
+                    zeroAccept = true;
+                    // if(!zeroAccept){
+                    if(wgsTyp){
+                        if(!(xx==0 && yy==0)){  //Nacitam len body, ktore maju aspon jednu suradnicu != 0
+                            xdata.push(xx);
+                            ydata.push(yy);
+                            zdata.push(zz);
+                            xyzdata.push([xx, yy, zz]);
+                        }
+                    }else{      // Nacitam vsetky body
+                        xdata.push(xx);
+                        ydata.push(yy);
+                        zdata.push(zz);
+                        xyzdata.push([xx, yy, zz]);
+                    }
+                }
+                // console.log(xdata);
+
+                // Test WGS84 suradnic a vetvenie vypoctu    
+                if(wgsTyp){
+                    var xmin = math.min(xdata);
+                    var xmax = math.max(xdata);
+                    var ymin = math.min(ydata);
+                    var ymax = math.max(ydata);
+                    if(xmin < -180 || xmax > 180){
+                        alert("No WGS84. Longitude data outside range -180 to 180.");
+                        return;
+                    }
+                    if(ymin < -90 || ymax > 90){
+                        alert("No WGS84. Latitude data outside range -90 to 90.");
+                        return;
+                    }
+                    calcWGS();
+                }else{
+                    calcMetric();
+                }
+            }
+        }
+
+        function calcWGS(){
+            // vypocet parametrov pre kriging
+            var t = zdata;
+            var x = xdata;
+            var y = ydata;
+            var model = "exponential";
+            var sigma2 = 0, alpha = 100;
+            var variogram = kriging.train(t, x, y, model, sigma2, alpha);
+
+            // Vypocet centra udajov, aby som mohol nafokusovat mapu na danu oblast
+            xcenter= math.mean(xdata);
+            ycenter= math.mean(ydata);
+            zmin = math.min(zdata);
+            zmax = math.max(zdata);
+
+            // Priprava farebnej skaly
+            // [[0,'blue'],[0.25, 'cyan'],[0.5, 'green'],[0.75,'yellow'],[1.0, 'red']]
+            farb = chroma.scale(['blue', 'cyan', 'green', 'yellow', 'red']);  //.domain([0, 0.25, 0.5, 0.75,1]); 
+
+            // Kazdemu bodu merania priradi farbu a ulozi ako property do geoJSON
+            var myHelp = [];
+            xyzdata.forEach((bod)=>{
+                var normaliz = (bod[2]-zmin)/(zmax-zmin);
+                pointsColor.push(farb(normaliz).hex());
+                myHelp.push(turf.point(bod,{normVal: normaliz, farba:farb(normaliz).hex(), priemer:3}))
+            })
+            points = turf.featureCollection(myHelp);
+
+            // Vypocita vzdialenost bodov pre interpolacnu siet 
+            var hranice = turf.bbox(points);
+            var from = turf.point([hranice[0], hranice[1]]);
+            var toX = turf.point([hranice[2], hranice[1]]);
+            var toY = turf.point([hranice[0], hranice[3]]);
+            var distanceX = turf.distance(from, toX, { units: "kilometers" });
+            var distanceY = turf.distance(from, toY, { units: "kilometers" });
+            if(distanceX >= distanceY){
+                var stepDistance = distanceY/vzd;
+            }else{
+                var stepDistance = distanceX/vzd;
+            }
+
+            // Vykona generovanie siete a interpolaciu pre body siete
+            grid = turf.interpolate(points, stepDistance, {gridType: "points", weight: 1});
+
+            // Hranice vygenerovanej siete a povodne hranice bodov merania sú trosku rozdielne
+            // Preto prepocitam hranice a vzdialenost nanovo. 
+            // Inak je problem s pripravou dat pre leaflet a plotly
+            var hranice = turf.bbox(grid);
+            var from = turf.point([hranice[0], hranice[1]]);
+            var toX = turf.point([hranice[2], hranice[1]]);
+            var toY = turf.point([hranice[0], hranice[3]]);
+            var distanceX = turf.distance(from, toX, { units: "kilometers" });
+            var distanceY = turf.distance(from, toY, { units: "kilometers" });
+            var nX = Math.round(distanceX/stepDistance)+1;
+            var nY = Math.round(distanceY/stepDistance)+1;
+            var xrow = [];
+            var yrow = [];
+            var zrow = [];
+            var xall = [];
+            var yall = [];
+            var zall = [];
+            var countX = 1;
+            turf.featureEach(grid, function (currentFeature, featureIndex) {
+                // vypocet a uchovanie interpolovanych hodnot pre body siete
+                var xsur = currentFeature.geometry.coordinates[0];
+                var ysur = currentFeature.geometry.coordinates[1];
+                var tpredicted = kriging.predict(xsur, ysur, variogram);
+                currentFeature.properties.elevation = tpredicted;
+
+                // Uprava do formatu pre zobrazenie
+                if(countX < nY){
+                    xrow.push(xsur);
+                    yrow.push(ysur);
+                    zrow.push(tpredicted);
+                    countX++;
+                }else{
+                    xrow.push(xsur);
+                    yrow.push(ysur);
+                    zrow.push(tpredicted);
+                    xall.push(xrow.reverse());
+                    yall.push(yrow);
+                    zall.push(zrow);
+                    xrow = [];
+                    yrow = [];
+                    zrow = [];
+                    countX = 1;
+                }
+            });
+            // console.log(math.min(xall),math.max(xall));
+
+            // Priprava a vypocet vrstevnic pre zvolený pocet vrstiev 
+            zgrid = [];
+            turf.propEach(grid, function (currentProperties, featureIndex) {
+                zgrid.push(currentProperties.elevation);
+            });
+            zminGrid = math.min(zgrid);
+            zmaxGrid = math.max(zgrid);
+
+            var breaks = [];
+            stepsDiff = (zmaxGrid-zminGrid)/contourSteps;
+            breaks.push(zminGrid);
+            for(var jj=1; jj < contourSteps + 1; ++jj){
+                breaks.push(zminGrid+jj * stepsDiff);
+            }
+            var breaksID = [];
+
+            // Priradenie farieb pre jednotlive vrstvy 
+            for(var ii = 0; ii < breaks.length; ++ii) {
+                var normaliz = ii/breaks.length;
+                breaksID.push({idFarba: ii, farbicka:farb(normaliz).hex()});
+            }
+
+            // Vypocet vrstevnic a vrstiev medzi vrstevnicami
+            pasy = turf.isobands(grid, breaks,{breaksProperties: breaksID});
+
+            leafletDraw();
+            plotlyDraw(xall,yall,zall, nX, nY);
+            
+        }
+
+        function calcMetric(){
+            // Transformacia metrickych suradnic na wgs84, len pre vypocet plochy
+            xmetr = [];
+            ymetr = [];
+            // stepmetr = turf.lengthToDegrees(stepDistance, 'meters');
+            xdata.forEach( hodnota => {
+                xmetr.push(turf.lengthToDegrees(hodnota, 'meters'));
+            })
+            xmetrmin = math.min(xmetr);
+            // console.log("xmetrmin: ", xmetrmin);
+            xmetrmax = math.max(xmetr);
+            ydata.forEach( hodnota => {
+                ymetr.push(turf.lengthToDegrees(hodnota, 'meters'));
+            })
+            ymetrmin = math.min(ymetr);
+            ymetrmax = math.max(ymetr);
+
+            // Vypocet rozsahu hodnot
+            distanceX = xmetrmax-xmetrmin;
+            distanceY = ymetrmax-ymetrmin;
+            if(distanceX >= distanceY){
+                var stepDistance = distanceY/(vzd-1);
+                // nY = vzd;
+                // nX = Math.round(distanceX/stepDistance);
+            }else{
+                var stepDistance = distanceX/(vzd-1);
+                // nX = vzd;
+                // nY = Math.round(distanceY/stepDistance);
+            }
+            // console.log(nX,nY);
+            // console.log(turf.convertLength(xmetrmin,'degrees','meters'),xmetrmax,stepDistance);
+            // console.log(ymetrmin,ymetrmax,stepDistance);
+            
+            // vypocet parametrov pre kriging
+            var t = zdata;
+            var x = xmetr;
+            var y = ymetr;
+            var model = "exponential";
+            var sigma2 = 0, alpha = 100;
+            var variogram = kriging.train(t, x, y, model, sigma2, alpha);
+
+            // Priprava farebnej skaly
+            // [[0,'blue'],[0.25, 'cyan'],[0.5, 'green'],[0.75,'yellow'],[1.0, 'red']]
+            farb = chroma.scale(['blue', 'cyan', 'green', 'yellow', 'red']);  //.domain([0, 0.25, 0.5, 0.75,1]); 
+
+            // Vykona generovanie siete
+            grid = turf.pointGrid([xmetrmin,ymetrmin,xmetrmax,ymetrmax],stepDistance,{units:'degrees'});
+            // console.log(grid);
+
+            // Hranice vygenerovanej siete a povodne hranice bodov merania sú trosku rozdielne
+            // Preto prepocitam hranice a vzdialenost nanovo. 
+            // Inak je problem s pripravou dat pre leaflet a plotly
+            var hranice = turf.bbox(grid);
+            var from = turf.point([hranice[0], hranice[1]]);
+            var toX = turf.point([hranice[2], hranice[1]]);
+            var toY = turf.point([hranice[0], hranice[3]]);
+            var distanceX = turf.distance(from, toX, { units: "degrees" });
+            var distanceY = turf.distance(from, toY, { units: "degrees" });
+            var nX = Math.round(distanceX/stepDistance)+1;
+            var nY = Math.round(distanceY/stepDistance)+1;
+            var xrow = [];
+            var yrow = [];
+            var zrow = [];
+            var xall = [];
+            var yall = [];
+            var zall = [];
+            var countX = 1;
+            // console.log(nX, nY);
+
+            turf.featureEach(grid, function (currentFeature, featureIndex) {
+                // vypocet a uchovanie interpolovanych hodnot pre body siete
+                var xsur = currentFeature.geometry.coordinates[0];
+                var ysur = currentFeature.geometry.coordinates[1];
+                var tpredicted = kriging.predict(xsur, ysur, variogram);
+                currentFeature.properties.elevation = tpredicted;
+
+                // Uprava do formatu pre zobrazenie v plotly
+                if(countX < nY){
+                    xrow.push(turf.convertLength(xsur,'degrees','meters'));
+                    yrow.push(turf.convertLength(ysur,'degrees','meters'));
+                    zrow.push(tpredicted);
+                    countX++;
+                }else{
+                    xrow.push(turf.convertLength(xsur,'degrees','meters'));
+                    yrow.push(turf.convertLength(ysur,'degrees','meters'));
+                    zrow.push(tpredicted);
+                    xall.push(xrow.reverse());
+                    yall.push(yrow);
+                    zall.push(zrow);
+                    xrow = [];
+                    yrow = [];
+                    zrow = [];
+                    countX = 1;
+                }
+            });
+            zminGrid = math.min(zall);
+            zmaxGrid = math.max(zall);
+
+            // leafletDraw();
+            plotlyDraw(xall,yall,zall, nX, nY);
+        
+        }
+
+        function getSelectedSheet(){
+            // Nacita data pre vybrany sheet a vyplni selektory stlpcov x, y, z, 
+            // Nastavi všetky selektory na hodnotu prveho stlpca
+            selMeno = wsheet.value;
+            const ws = alldata.Sheets[selMeno];
+            raw_data = XLSX.utils.sheet_to_json(ws, {header:1});
+            selxx.innerHTML = "";
+            selyy.innerHTML = "";
+            selzz.innerHTML = "";
+            raw_data[0].forEach (meno => {
+                var optionX = document.createElement("option");
+                var optionY = document.createElement("option");
+                var optionZ = document.createElement("option");
+                var mm = meno.replace(/\x00/g,'');
+                optionX.text = mm
+                optionY.text = mm;
+                optionZ.text = mm;
+                selxx.add(optionX);
+                selyy.add(optionY);
+                selzz.add(optionZ);
+            });
+        }
+
+        function getSelectedColumn(){
+            // Aktualizuje vybrané stlpce dat pri zmene vyberu
+            colX = selxx.selectedIndex;
+            colY = selyy.selectedIndex;
+            colZ = selzz.selectedIndex;
+        }
+        
+        function leafletDraw(){
+            // Vymazanie vsetkych vrstiev okrem zakladnej mapy
+            map.eachLayer(function (layer) {
+                if (mapTileURL != layer._url){map.removeLayer(layer)};
+            });
+
+            if(wgsTyp){
+                // Ak chcem plosnu interpolaciu, tak pridam vrstvu pasov
+                if(viewTyp){                    
+                    pasyLayer = L.geoJSON(pasy,{
+                    style: function (feature){
+                            return {
+                                color: feature.properties.farbicka,
+                                weight: 1,
+                                opacity: 0.5,
+                                fillColor:feature.properties.farbicka,
+                                fillOpacity: 1
+                            };
+                    }
+                    }).addTo(map);
+                }
+
+                // Ak nechcem zobrazit plosnu interpolaciu, tak pridam vrstvu vyfarbenych bodov
+                // Inak zobrazujem len jednofarebne body 
+                if(!viewTyp){
+                    var bodyLayer = L.geoJSON(points, {
+                        pointToLayer: function (feature, latlng) {
+                            var myMrk = {
+                                radius: 2,
+                                weight: 1,
+                                opacity: 0,
+                                color: feature.properties.farba,
+                                fillOpacity: 1
+                            };
+                            return L.circleMarker(latlng, myMrk);
+                        }
+                    }).addTo(map);
+                }else{
+                    var bodyLayer = L.geoJSON(points, {
+                        pointToLayer: function (feature, latlng) {
+                            var myMrk = {
+                                radius: 2,
+                                weight: 1,
+                                opacity: 0,
+                                color: 'black',
+                                fillOpacity: 1
+                            };
+                            return L.circleMarker(latlng, myMrk);
+                        }
+                    }).addTo(map);
+
+                }            
+                map.fitBounds(bodyLayer.getBounds(),{maxZoom:19});
+            }
+        }
+
+        function plotlyDraw(xxall, yyall, zzall, nX, nY){
+            // console.log(xxall)
+            Plotly.purge(mygrf);
+
+            if(nX>nY){
+                var aspectX = 2;
+                var aspectY = 2*nY/nX; 
+                var aspectZ = aspectY;
+                // var eyeZ = aspectX;
+            }else{
+                var aspectX = 2*nX/nY;
+                var aspectY = 2;
+                var aspectZ = aspectX; 
+                // var eyeZ = aspectY;
+            }
+
+            var plotSurface = {
+                type:'surface',
+                x:xxall,
+                y:yyall,
+                z:zzall,
+                autocolorscale: false,
+                colorscale:[[0,'blue'],[0.25, 'cyan'],[0.5, 'green'],[0.75,'yellow'],[1.0, 'red']],
+                opacity: 1,
+                showscale:true,
+                hoverinfo:'skip',
+                contours: {
+                    x:{
+                        show:false,
+                        highlight: false,
+                    },
+                    y:{
+                        show:false,
+                        highlight: false,
+                    },
+                    z: {
+                        show:true,
+                        color: 'gray',
+                        highlight: false,
+                        highlightcolor:'black',
+                        width:10,
+                        start: zmin,
+                        end: zmax,
+                        size:stepsDiff,
+                    }
+                },
+            };
+
+            x1 = math.min(xxall);
+            x2 = math.max(xxall);
+            y1 = math.min(yyall);
+            y2 = math.max(yyall);
+
+            var plotSpliter = {
+                type:'surface',
+                x:[[x1,x2],[x1,x2]],
+                y:[[y1,y1],[y2,y2]],
+                z:[[zminGrid,zminGrid],[zminGrid,zminGrid]],
+                autocolorscale: false,
+                colorscale:[[0,'white'],[1, 'white']],
+                opacity: 0,
+                showscale:false,
+                hoverinfo:'skip',
+            };
+
+            if(!viewTyp){
+                var plotPoints = {
+                    type:'scatter3d',
+                    mode: 'markers',
+                    hoverinfo:'z',
+                    marker: {
+                        size: 5,
+                        color: pointsColor,
+                        symbol: 'circle',
+                        line: {
+                            color: 'rgb(204, 204, 204)',
+                            width: 1
+                        },
+                    },
+                    x: xdata,
+                    y: ydata,
+                    z: zdata,
+                };
+            }else{
+                var plotPoints = {
+                    type:'scatter3d',
+                    mode: 'markers',
+                    hoverinfo:'z',
+                    marker: {
+                        size: 5,
+                        color: 'blue',
+                        symbol: 'circle',
+                        line: {
+                            color: 'rgb(204, 204, 204)',
+                            width: 1
+                        },
+                    },
+                    x: xdata,
+                    y: ydata,
+                    z: zdata,
+                };
+            }
+            // var plotGrid = {
+            //         type:'scatter3d',
+            //         mode: 'markers',
+            //         hoverinfo:'z',
+            //         marker: {
+            //             size: 5,
+            //             color: 'green',
+            //             symbol: 'circle',
+            //         },
+            //         x: xxall[0],
+            //         y: yyall[0],
+            //         z: zzall[0],
+            //     };
+
+            if(viewTyp){
+                var dataPlot = [plotSurface,plotPoints,plotSpliter];
+                // var dataPlot = [plotGrid];
+            }else{
+                var dataPlot = [plotPoints];
+            }
+            // console.log(xcenter);
+
+            var layoutPlot = { 
+                autosize: true,
+                margin:{t:0,b:0,l:0,r:0},
+                scene:{
+		            aspectmode:'manual',
+                    aspectratio:{
+                        x:aspectX,
+                        y:aspectY,
+                        z:1,
+                    },
+                    camera:{
+                        eye:{
+                            x:0.2,
+                            y:-1,
+                            z:0.3,
+                        },
+                        projection:{type:'orthographic'},   // perspective, orthographic
+                    }
+            	},
+            };
+            // console.log(xxall);
+
+            Plotly.newPlot('mygrf', dataPlot, layoutPlot);
+        }
+
+        function splitContour(){
+            var contourValue = document.getElementById("myRange").value;
+            contourNad = zminGrid + (zmaxGrid-zminGrid)*Number(contourValue)/100;
+            if(wgsTyp){
+                var pasNad = turf.isobands(grid, [zminGrid, contourNad, zmax]);
+                if(map.hasLayer(pasPod)){
+                    map.removeLayer(pasPod);
+                }
+
+                pasPod = L.geoJSON(pasNad.features[0],{
+                    style:{
+                        color: 'white',
+                        opacity: 0.7,
+                        fillColor:'white',
+                        fillOpacity: 1
+                    }
+                }).addTo(map);
+
+                document.getElementById("calcLevel").innerHTML = contourNad.toExponential(2) +" ";
+                document.getElementById("calcArea").innerHTML = Number(turf.area(pasNad.features[1])).toExponential(2) +" m2 ";
+                // console.log("pasNad: ", turf.area(pasNad.features[1]));
+
+                var update = {
+                    z:[[[contourNad,contourNad],[contourNad,contourNad]]],
+                    opacity:1,
+                };
+                Plotly.restyle('mygrf', update, 2)
+
+            }else{
+                var pasNad = turf.isobands(grid, [zminGrid, contourNad, zmaxGrid]);
+
+                document.getElementById("calcLevel").innerHTML = contourNad.toExponential(2) +" ";
+                document.getElementById("calcArea").innerHTML = Number(turf.area(pasNad.features[1])).toExponential(2) +" ";
+                // console.log("pasNad: ", turf.area(pasNad.features[1]));
+                // console.log(zminGrid, contourNad, zmaxGrid);
+                var update = {
+                    z:[[[contourNad,contourNad],[contourNad,contourNad]]],
+                    opacity:1,
+                };
+                Plotly.restyle('mygrf', update, 2)
+
+            }
+        }
+    </script>
+</body>
+</html>
